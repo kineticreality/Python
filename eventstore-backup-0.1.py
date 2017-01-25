@@ -1,6 +1,6 @@
 # Eventstore Backup
 # Utilizing ZFS Snapshot functionality to backup the Eventstore Data Volume.
-# Author: Mike Reid
+# Author: Mike Reid 
 # Version 0.1
 
 #!/usr/bin/python
@@ -42,8 +42,20 @@ def runCommand(command):
 def zfsSend(snapshot,backupType):
         if backupType == str("full"):
            logging.debug("Performing full snapshot for " + str(instance_id))
-           runCommand("zfs snapshot -r eventstore@"+ str(snapshot))
-           runCommand("zfs send eventstore@" + snapshot + " | gzip >" + str(backupPath) + "/" + snapshot + ".gz")
+           runCommand("zfs snapshot -r eventstore@"+ str(snapshot) + "-" + str(backupType))
+           runCommand("zfs send eventstore@" + str(snapshot) + "-" + str(backupType) + " | gzip >" + str(backupPath) + "/" + str(snapshot) + "-full" + ".gz")
+           sys.exit(0)
+        elif backupType == str("incremental"):
+             logging.debug("Performing incremental snapshot for " + str(instance_id))
+             lastfullBackup = subprocess.check_output("zfs list -H -t snapshot | awk '{print $1}' | grep full | tail -1", shell=True).strip()
+             logging.debug("Last full snapshot is " + str(lastfullBackup) )
+             runCommand("zfs snapshot -r eventstore@"+ str(snapshot) + "-" + str(backupType))
+             logging.debug("Creating incremental snapshot " + str(snapshot) + "-" + str(backupType))
+             lastincBackup = subprocess.check_output("zfs list -H -t snapshot | awk '{print $1}' | grep incremental | tail -1", shell=True).strip()
+             runCommand("zfs send -i " + str(lastfullBackup) + " " + str(lastincBackup) + " | gzip > " + str(backupPath) + "/" + str(snapshot) + "-inc" + ".gz")
+             sys.exit(0)
+        elif backupType == str("differential"):
+             logging.debug("Performing differential snapshot for" )
         else:
            sys.exit(1)
 
@@ -66,9 +78,14 @@ if __name__ == "__main__":
         zfsSend(snapshotTimestamp,backupType)
        
     elif (args.incremental):
-        command =  "zfs snapshot -i eventstore@snapshot-id " + str (backupPath)
+        backupType = "incremental"
+        print str(snapshotTimestamp)
+        zfsSend(snapshotTimestamp,backupType)
+
     elif (args.differential):
-        command =  ""
+        backupType = "differential"
+        print str(snapshotTimestamp)
+        zfsSend(snapshotTimestamp,backupType)
     else:
         logging.debug("No valid parameter detected. Please choose a backup function.")
         logging.debug("InstanceId = " + str(instance_id))
